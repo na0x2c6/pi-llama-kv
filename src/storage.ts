@@ -41,6 +41,7 @@ export function sharedDepth(a: string[], b: string[]): number {
 export interface SavedSlot {
   filename: string;
   fingerprint: string;
+  build?: string;
   tokens?: number;
   bytes?: number;
   savedAt: string;

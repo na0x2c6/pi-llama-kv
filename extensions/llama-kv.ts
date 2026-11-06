@@ -27,8 +27,8 @@ export default function (pi: ExtensionAPI) {
     const slot = sharedSlots().main;
     if (!entry || slot === undefined || !saved) return;
     const server = await llamaServer(ctx);
-    const fingerprint = await server?.fingerprint();
-    if (!server || !fingerprint || saved.entries.get(entry)?.fingerprint === fingerprint) return;
+    const identity = await server?.identity();
+    if (!server || !identity || saved.entries.get(entry)?.fingerprint === identity.fingerprint) return;
     const filename = `pi-${ctx.sessionManager.getSessionId()}-${entry}.bin`;
     // The server saves a slot once it is idle: anything else on it can stop.
     pi.events.emit("llama-kv:saving", entry);
@@ -36,7 +36,7 @@ export default function (pi: ExtensionAPI) {
       const result = await server.save(slot, filename);
       await saved.set(entry, {
         filename,
-        fingerprint,
+        ...identity,
         tokens: result.n_saved as number | undefined,
         bytes: result.n_written as number | undefined,
         savedAt: new Date().toISOString(),
@@ -57,24 +57,31 @@ export default function (pi: ExtensionAPI) {
     if (path.length === 0) return;
     const server = await llamaServer(ctx);
     const slots = await server?.slots();
-    const fingerprint = await server?.fingerprint();
-    if (!server || !slots || !fingerprint) return;
+    const identity = await server?.identity();
+    if (!server || !slots || !identity) return;
 
     const floor = Math.max(lastCompaction(ctx, path), held ? sharedDepth(path, pathTo(ctx, held)) : -1);
     const candidates = [...saved.entries]
-      .filter(([, file]) => file.fingerprint === fingerprint)
-      .map(([entry, file]) => ({ entry, filename: file.filename, depth: sharedDepth(path, pathTo(ctx, entry)) }))
+      .filter(([, file]) => file.fingerprint === identity.fingerprint)
+      .map(([entry, file]) => ({
+        entry,
+        filename: file.filename,
+        otherBuild: file.build !== identity.build,
+        depth: sharedDepth(path, pathTo(ctx, entry)),
+      }))
       .filter((candidate) => candidate.depth > floor)
       .sort((a, b) => b.depth - a.depth);
 
     const slot = pickMain(sharedSlots(), slots);
     let freed = false;
-    for (const { entry, filename } of candidates) {
+    for (const { entry, filename, otherBuild } of candidates) {
       try {
         // The error is the same for a missing file and for a shared KV pool
-        // that the other slots leave no room in.
+        // that the other slots leave no room in. A file of another build may
+        // just be of an older format, not worth the cache of the other slots.
         const result = await server.restore(slot, filename).catch(async (err) => {
-          if (freed) throw err;
+          held = undefined;
+          if (freed || otherBuild) throw err;
           freed = true;
           for (const other of slots) {
             if (other.id !== slot && !other.is_processing) await server.erase(other.id);
@@ -83,10 +90,11 @@ export default function (pi: ExtensionAPI) {
         });
         held = entry;
         const ms = (result.timings as { restore_ms?: number } | undefined)?.restore_ms;
-        ctx.ui.notify(`KV cache restored: ${result.n_restored} tokens in ${Math.round(ms ?? 0)} ms`, "info");
+        const origin = otherBuild ? ", saved by another build of llama-server" : "";
+        ctx.ui.notify(`KV cache restored: ${result.n_restored} tokens in ${Math.round(ms ?? 0)} ms${origin}`, "info");
         return;
       } catch (err) {
-        // Removed on the host, most likely.
+        // Removed on the host or of an older format, most likely.
         await saved.delete(entry);
         ctx.ui.notify(`KV cache not restored: ${err}`, "warning");
       }

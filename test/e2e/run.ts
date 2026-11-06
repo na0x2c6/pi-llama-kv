@@ -7,7 +7,7 @@ import { agentDir, check, finish, notes, open, repo, SessionManager, waitFor } f
 const manager = SessionManager.create(repo, join(agentDir, "sessions"));
 let session = await open(manager);
 const index = join(agentDir, "llama-kv", manager.getSessionId(), "kv.json");
-const kv = () => JSON.parse(readFileSync(index, "utf8")) as Record<string, { filename: string; tokens?: number; bytes?: number }>;
+const kv = () => JSON.parse(readFileSync(index, "utf8")) as Record<string, { filename: string; build?: string; tokens?: number; bytes?: number }>;
 
 const messages = () =>
   manager.getEntries().filter((entry) => entry.type === "message") as { id: string; message: { role: string } }[];
@@ -55,5 +55,19 @@ session = await open(resumed);
 await waitFor("the resume", () => notes.length > 0, 30_000);
 console.log(`  after resume: ${JSON.stringify(notes)}`);
 check("resume restores what covers the leaf", restored(), notes);
+check("a file of this build is not called another's", !notes.some((note) => note.includes("another build")), notes);
+
+// A rebuilt server keeps the files, and says where they come from.
+await session.navigateTree(lastOf("user"), { summarize: false });
+const index3 = kv();
+for (const entry of Object.values(index3)) entry.build = "another";
+writeFileSync(index, JSON.stringify(index3));
+await session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" } as never);
+session.dispose();
+notes.length = 0;
+session = await open(SessionManager.open(file, join(agentDir, "sessions")));
+await waitFor("the resume", () => notes.length > 0, 30_000);
+console.log(`  after rebuild: ${JSON.stringify(notes)}`);
+check("a file of another build is restored and marked", notes.some((note) => note.includes("another build")), notes);
 session.dispose();
 finish();

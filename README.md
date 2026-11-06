@@ -32,9 +32,11 @@ The extension pins the conversation to one slot through `id_slot`, picked from `
 
 llama-server has no limit for these files, and no way to list or delete them over its API. Bounding them is up to the host, with a timer or a path unit on the directory. A file that is gone is only a missed restore: the extension forgets it and tries the next best one, or the prompt is prefilled as usual.
 
+A file is only restored into the model path and context size it was saved from. It survives an update of llama-server: the server refuses a file of another format, which is then a missed restore, and the notification says when a restored file comes from another build. A build that computes the KV of a model differently and keeps the format loads the old KV without an error, and so does a model file replaced at the same path. Remove the files after such an update.
+
 The index of the files is `<agent dir>/llama-kv/<session id>/kv.json`.
 
-On a unified KV (`--kv-unified`) a restore needs room in the shared pool. When it fails, the extension erases the other idle slots and tries once more.
+On a unified KV (`--kv-unified`) a restore needs room in the shared pool. When it fails, the extension erases the other idle slots and tries once more, except for a file of another build: that failure may be its format, and the file is forgotten.
 
 ## Sharing the server
 

@@ -14,6 +14,11 @@ const TRANSFER_TIMEOUT_MS = 180_000;
 // would otherwise go out with the key before every request.
 const withoutSlots = new Set<string>();
 
+export interface ServerIdentity {
+  fingerprint: string;
+  build?: string;
+}
+
 export class LlamaServer {
   private readonly baseUrl: string;
   private readonly model: string;
@@ -52,14 +57,20 @@ export class LlamaServer {
     }
   }
 
-  // Tells apart what a slot file can be loaded into.
-  async fingerprint(): Promise<string | undefined> {
+  // The fingerprint tells apart what a slot file can be loaded into. The build
+  // stays out of it: nearly every rebuild leaves the KV of a model as it was,
+  // and the server refuses a file of another format.
+  async identity(): Promise<ServerIdentity | undefined> {
     try {
       const props = (await this.get("/props")) as {
+        build_info?: string;
         model_path?: string;
         default_generation_settings?: { n_ctx?: number };
       };
-      return `${props.model_path}:${props.default_generation_settings?.n_ctx}`;
+      return {
+        fingerprint: `${props.model_path}:${props.default_generation_settings?.n_ctx}`,
+        build: props.build_info,
+      };
     } catch {
       return undefined;
     }

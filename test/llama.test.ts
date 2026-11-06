@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
-import { pickMain, pinToMainSlot, sharedSlots, type SlotState } from "../src/llama.ts";
+import { LlamaServer, pickMain, pinToMainSlot, sharedSlots, type SlotState } from "../src/llama.ts";
 
 const idle = (id: number) => ({ id, is_processing: false });
 const busy = (id: number) => ({ id, is_processing: true });
@@ -106,5 +106,41 @@ describe("pinToMainSlot", () => {
     await pinToMainSlot({}, llama("http://other-3/v1"));
     await pinToMainSlot({}, llama("http://other-3/v1"));
     assert.equal(asked.length, 1);
+  });
+});
+
+describe("identity", () => {
+  const realFetch = globalThis.fetch;
+  const props = (overrides: object = {}) => ({
+    build_info: "b1-aaaaaaa",
+    model_path: "/models/m.gguf",
+    default_generation_settings: { n_ctx: 4096 },
+    ...overrides,
+  });
+  const identityOf = (answer: object) => {
+    globalThis.fetch = (async () => Response.json(answer)) as typeof fetch;
+    return new LlamaServer("http://llama", "m").identity();
+  };
+  const fingerprintOf = async (answer: object) => (await identityOf(answer))?.fingerprint;
+
+  afterEach(() => {
+    globalThis.fetch = realFetch;
+  });
+
+  it("keeps the fingerprint across builds of llama-server", async () => {
+    assert.equal(await fingerprintOf(props()), await fingerprintOf(props({ build_info: "b2-bbbbbbb" })));
+  });
+
+  it("reports the build", async () => {
+    assert.equal((await identityOf(props()))?.build, "b1-aaaaaaa");
+  });
+
+  it("changes the fingerprint with the model", async () => {
+    assert.notEqual(await fingerprintOf(props()), await fingerprintOf(props({ model_path: "/models/other.gguf" })));
+  });
+
+  it("changes the fingerprint with the context size", async () => {
+    const other = props({ default_generation_settings: { n_ctx: 8192 } });
+    assert.notEqual(await fingerprintOf(props()), await fingerprintOf(other));
   });
 });
