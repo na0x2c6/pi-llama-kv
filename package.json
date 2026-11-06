@@ -1,0 +1,23 @@
+{
+  "name": "pi-llama-kv",
+  "version": "0.1.0",
+  "description": "Pi extension that saves llama-server's KV cache of the branches left behind and restores it on the way back",
+  "license": "Apache-2.0",
+  "type": "module",
+  "keywords": ["pi-package"],
+  "pi": {
+    "extensions": ["./extensions/llama-kv.ts"]
+  },
+  "scripts": {
+    "check": "tsc --noEmit",
+    "test": "node --test 'test/*.test.ts'"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "1.4.0",
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0"
+  }
+}
