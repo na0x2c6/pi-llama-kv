@@ -50,11 +50,16 @@ Before a slot is saved, `llama-kv:saving` goes out on `pi.events`: the server wa
 npm install
 npm run check
 npm test
-node test/e2e/run.ts [model]    # needs llama-server with --slot-save-path
-node test/e2e/other-server.ts [model]
 ```
 
-`LLAMA_URL` selects the server, and `E2E_EXTENSIONS` loads more extensions, separated by `:`.
+The e2e runs drive a real session against llama.cpp's `llama-server`, started with `--slot-save-path`, at `http://127.0.0.1:8081` unless `LLAMA_URL` says otherwise. `other-server.ts` puts a server without slots in front of it. `E2E_EXTENSIONS` loads more extensions, separated by `:`.
+
+```bash
+node test/e2e/run.ts [model]
+LLAMA_URL=http://127.0.0.1:8080 node test/e2e/run.ts [model]
+node test/e2e/other-server.ts [model]
+E2E_EXTENSIONS=../summary.ts node test/e2e/run.ts [model]
+```
 
 ## License
 
